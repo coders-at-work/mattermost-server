@@ -101,3 +101,4 @@ tags
 
 debug
 client
+*.out
