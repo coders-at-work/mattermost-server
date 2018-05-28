@@ -41,7 +41,7 @@ func FindConfigFile(fileName string) (path string) {
 			return fileName
 		}
 	} else {
-		for _, dir := range []string{"./config", "../config", "../../config", "."} {
+		for _, dir := range []string{"./config", "../config", "../../config", "../../../config", "."} {
 			path, _ := filepath.Abs(filepath.Join(dir, fileName))
 			if _, err := os.Stat(path); err == nil {
 				return path
@@ -53,7 +53,7 @@ func FindConfigFile(fileName string) (path string) {
 
 // FindDir looks for the given directory in nearby ancestors, falling back to `./` if not found.
 func FindDir(dir string) (string, bool) {
-	for _, parent := range []string{".", "..", "../.."} {
+	for _, parent := range []string{".", "..", "../..", "../../.."} {
 		foundDir, err := filepath.Abs(filepath.Join(parent, dir))
 		if err != nil {
 			continue
@@ -217,13 +217,17 @@ func newViper(allowEnvironmentOverrides bool) *viper.Viper {
 
 	// Set zeroed defaults for all the config settings so that Viper knows what environment variables
 	// it needs to be looking for. The correct defaults will later be applied using Config.SetDefaults.
-	defaults := flattenStructToMap(structToMap(reflect.TypeOf(model.Config{})))
+	defaults := getDefaultsFromStruct(model.Config{})
 
 	for key, value := range defaults {
 		v.SetDefault(key, value)
 	}
 
 	return v
+}
+
+func getDefaultsFromStruct(s interface{}) map[string]interface{} {
+	return flattenStructToMap(structToMap(reflect.TypeOf(s)))
 }
 
 // Converts a struct type into a nested map with keys matching the struct's fields and values
@@ -251,7 +255,14 @@ func structToMap(t reflect.Type) (out map[string]interface{}) {
 		case reflect.Struct:
 			value = structToMap(field.Type)
 		case reflect.Ptr:
-			value = nil
+			indirectType := field.Type.Elem()
+
+			if indirectType.Kind() == reflect.Struct {
+				// Follow pointers to structs since we need to define defaults for their fields
+				value = structToMap(indirectType)
+			} else {
+				value = nil
+			}
 		default:
 			value = reflect.Zero(field.Type).Interface()
 		}
@@ -437,8 +448,7 @@ func GenerateClientConfig(c *model.Config, diagnosticId string, license *model.L
 	props["WebsocketURL"] = strings.TrimRight(*c.ServiceSettings.WebsocketURL, "/")
 	props["SiteName"] = c.TeamSettings.SiteName
 	props["EnableTeamCreation"] = strconv.FormatBool(*c.TeamSettings.EnableTeamCreation)
-	props["EnableAPIv3"] = strconv.FormatBool(*c.ServiceSettings.EnableAPIv3)
-	props["EnableUserCreation"] = strconv.FormatBool(c.TeamSettings.EnableUserCreation)
+	props["EnableUserCreation"] = strconv.FormatBool(*c.TeamSettings.EnableUserCreation)
 	props["EnableOpenServer"] = strconv.FormatBool(*c.TeamSettings.EnableOpenServer)
 	props["RestrictDirectMessage"] = *c.TeamSettings.RestrictDirectMessage
 	props["RestrictTeamInvite"] = *c.TeamSettings.RestrictTeamInvite
@@ -491,6 +501,7 @@ func GenerateClientConfig(c *model.Config, diagnosticId string, license *model.L
 	props["EnableSignInWithUsername"] = strconv.FormatBool(*c.EmailSettings.EnableSignInWithUsername)
 	props["RequireEmailVerification"] = strconv.FormatBool(c.EmailSettings.RequireEmailVerification)
 	props["EnableEmailBatching"] = strconv.FormatBool(*c.EmailSettings.EnableEmailBatching)
+	props["EnablePreviewModeBanner"] = strconv.FormatBool(*c.EmailSettings.EnablePreviewModeBanner)
 	props["EmailNotificationContentsType"] = *c.EmailSettings.EmailNotificationContentsType
 
 	props["EmailLoginButtonColor"] = *c.EmailSettings.LoginButtonColor
@@ -543,6 +554,7 @@ func GenerateClientConfig(c *model.Config, diagnosticId string, license *model.L
 	props["HasImageProxy"] = strconv.FormatBool(hasImageProxy)
 
 	// Set default values for all options that require a license.
+	props["ExperimentalHideTownSquareinLHS"] = "false"
 	props["ExperimentalTownSquareIsReadOnly"] = "false"
 	props["ExperimentalEnableAuthenticationTransfer"] = "true"
 	props["EnableCustomBrand"] = "false"
@@ -591,8 +603,14 @@ func GenerateClientConfig(c *model.Config, diagnosticId string, license *model.L
 	props["DataRetentionMessageRetentionDays"] = "0"
 	props["DataRetentionEnableFileDeletion"] = "false"
 	props["DataRetentionFileRetentionDays"] = "0"
+	props["PasswordMinimumLength"] = fmt.Sprintf("%v", *c.PasswordSettings.MinimumLength)
+	props["PasswordRequireLowercase"] = strconv.FormatBool(*c.PasswordSettings.Lowercase)
+	props["PasswordRequireUppercase"] = strconv.FormatBool(*c.PasswordSettings.Uppercase)
+	props["PasswordRequireNumber"] = strconv.FormatBool(*c.PasswordSettings.Number)
+	props["PasswordRequireSymbol"] = strconv.FormatBool(*c.PasswordSettings.Symbol)
 
 	if license != nil {
+		props["ExperimentalHideTownSquareinLHS"] = strconv.FormatBool(*c.TeamSettings.ExperimentalHideTownSquareinLHS)
 		props["ExperimentalTownSquareIsReadOnly"] = strconv.FormatBool(*c.TeamSettings.ExperimentalTownSquareIsReadOnly)
 		props["ExperimentalEnableAuthenticationTransfer"] = strconv.FormatBool(*c.ServiceSettings.ExperimentalEnableAuthenticationTransfer)
 
@@ -649,14 +667,6 @@ func GenerateClientConfig(c *model.Config, diagnosticId string, license *model.L
 
 		if *license.Features.Office365OAuth {
 			props["EnableSignUpWithOffice365"] = strconv.FormatBool(c.Office365Settings.Enable)
-		}
-
-		if *license.Features.PasswordRequirements {
-			props["PasswordMinimumLength"] = fmt.Sprintf("%v", *c.PasswordSettings.MinimumLength)
-			props["PasswordRequireLowercase"] = strconv.FormatBool(*c.PasswordSettings.Lowercase)
-			props["PasswordRequireUppercase"] = strconv.FormatBool(*c.PasswordSettings.Uppercase)
-			props["PasswordRequireNumber"] = strconv.FormatBool(*c.PasswordSettings.Number)
-			props["PasswordRequireSymbol"] = strconv.FormatBool(*c.PasswordSettings.Symbol)
 		}
 
 		if *license.Features.Announcement {

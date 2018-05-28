@@ -184,7 +184,6 @@ type ServiceSettings struct {
 	EnableOnlyAdminIntegrations                       *bool
 	EnablePostUsernameOverride                        bool
 	EnablePostIconOverride                            bool
-	EnableAPIv3                                       *bool
 	EnableLinkPreviews                                *bool
 	EnableTesting                                     bool
 	EnableDeveloper                                   *bool
@@ -225,6 +224,7 @@ type ServiceSettings struct {
 	ImageProxyType                                    *string
 	ImageProxyURL                                     *string
 	ImageProxyOptions                                 *string
+	EnableAPITeamDeletion                             *bool
 }
 
 func (s *ServiceSettings) SetDefaults() {
@@ -242,10 +242,6 @@ func (s *ServiceSettings) SetDefaults() {
 
 	if s.ListenAddress == nil {
 		s.ListenAddress = NewString(SERVICE_SETTINGS_DEFAULT_LISTEN_AND_ADDRESS)
-	}
-
-	if s.EnableAPIv3 == nil {
-		s.EnableAPIv3 = NewBool(true)
 	}
 
 	if s.EnableLinkPreviews == nil {
@@ -457,17 +453,24 @@ func (s *ServiceSettings) SetDefaults() {
 	if s.ImageProxyOptions == nil {
 		s.ImageProxyOptions = NewString("")
 	}
+
+	if s.EnableAPITeamDeletion == nil {
+		s.EnableAPITeamDeletion = NewBool(false)
+	}
 }
 
 type ClusterSettings struct {
-	Enable                *bool
-	ClusterName           *string
-	OverrideHostname      *string
-	UseIpAddress          *bool
-	UseExperimentalGossip *bool
-	ReadOnlyConfig        *bool
-	GossipPort            *int
-	StreamingPort         *int
+	Enable                      *bool
+	ClusterName                 *string
+	OverrideHostname            *string
+	UseIpAddress                *bool
+	UseExperimentalGossip       *bool
+	ReadOnlyConfig              *bool
+	GossipPort                  *int
+	StreamingPort               *int
+	MaxIdleConns                *int
+	MaxIdleConnsPerHost         *int
+	IdleConnTimeoutMilliseconds *int
 }
 
 func (s *ClusterSettings) SetDefaults() {
@@ -501,6 +504,18 @@ func (s *ClusterSettings) SetDefaults() {
 
 	if s.StreamingPort == nil {
 		s.StreamingPort = NewInt(8075)
+	}
+
+	if s.MaxIdleConns == nil {
+		s.MaxIdleConns = NewInt(100)
+	}
+
+	if s.MaxIdleConnsPerHost == nil {
+		s.MaxIdleConnsPerHost = NewInt(128)
+	}
+
+	if s.IdleConnTimeoutMilliseconds == nil {
+		s.IdleConnTimeoutMilliseconds = NewInt(90000)
 	}
 }
 
@@ -739,6 +754,7 @@ type EmailSettings struct {
 	EnableEmailBatching               *bool
 	EmailBatchingBufferSize           *int
 	EmailBatchingInterval             *int
+	EnablePreviewModeBanner           *bool
 	SkipServerCertificateVerification *bool
 	EmailNotificationContentsType     *string
 	LoginButtonColor                  *string
@@ -789,6 +805,10 @@ func (s *EmailSettings) SetDefaults() {
 
 	if s.EmailBatchingInterval == nil {
 		s.EmailBatchingInterval = NewInt(EMAIL_BATCHING_INTERVAL)
+	}
+
+	if s.EnablePreviewModeBanner == nil {
+		s.EnablePreviewModeBanner = NewBool(true)
 	}
 
 	if s.EnableSMTPAuth == nil {
@@ -980,7 +1000,7 @@ type TeamSettings struct {
 	SiteName                            string
 	MaxUsersPerTeam                     *int
 	EnableTeamCreation                  *bool
-	EnableUserCreation                  bool
+	EnableUserCreation                  *bool
 	EnableOpenServer                    *bool
 	RestrictCreationToDomains           string
 	EnableCustomBrand                   *bool
@@ -1002,6 +1022,7 @@ type TeamSettings struct {
 	EnableConfirmNotificationsToChannel *bool
 	TeammateNameDisplay                 *string
 	ExperimentalEnableAutomaticReplies  *bool
+	ExperimentalHideTownSquareinLHS     *bool
 	ExperimentalTownSquareIsReadOnly    *bool
 	ExperimentalPrimaryTeam             *string
 }
@@ -1100,6 +1121,10 @@ func (s *TeamSettings) SetDefaults() {
 		s.ExperimentalEnableAutomaticReplies = NewBool(false)
 	}
 
+	if s.ExperimentalHideTownSquareinLHS == nil {
+		s.ExperimentalHideTownSquareinLHS = NewBool(false)
+	}
+
 	if s.ExperimentalTownSquareIsReadOnly == nil {
 		s.ExperimentalTownSquareIsReadOnly = NewBool(false)
 	}
@@ -1111,6 +1136,11 @@ func (s *TeamSettings) SetDefaults() {
 	if s.EnableTeamCreation == nil {
 		s.EnableTeamCreation = NewBool(true)
 	}
+
+	if s.EnableUserCreation == nil {
+		s.EnableUserCreation = NewBool(true)
+	}
+
 }
 
 type ClientRequirements struct {
@@ -1144,6 +1174,7 @@ type LdapSettings struct {
 	NicknameAttribute  *string
 	IdAttribute        *string
 	PositionAttribute  *string
+	LoginIdAttribute   *string
 
 	// Synchronization
 	SyncIntervalMinutes *int
@@ -1225,6 +1256,12 @@ func (s *LdapSettings) SetDefaults() {
 
 	if s.PositionAttribute == nil {
 		s.PositionAttribute = NewString(LDAP_SETTINGS_DEFAULT_POSITION_ATTRIBUTE)
+	}
+
+	// For those upgrading to the version when LoginIdAttribute was added
+	// they need IdAttribute == LoginIdAttribute not to break
+	if s.LoginIdAttribute == nil {
+		s.LoginIdAttribute = s.IdAttribute
 	}
 
 	if s.SyncIntervalMinutes == nil {
@@ -1858,16 +1895,8 @@ func (o *Config) SetDefaults() {
 }
 
 func (o *Config) IsValid() *AppError {
-	if len(*o.ServiceSettings.SiteURL) == 0 && *o.EmailSettings.EnableEmailBatching {
-		return NewAppError("Config.IsValid", "model.config.is_valid.site_url_email_batching.app_error", nil, "", http.StatusBadRequest)
-	}
-
 	if *o.ClusterSettings.Enable && *o.EmailSettings.EnableEmailBatching {
 		return NewAppError("Config.IsValid", "model.config.is_valid.cluster_email_batching.app_error", nil, "", http.StatusBadRequest)
-	}
-
-	if len(*o.ServiceSettings.SiteURL) == 0 && *o.ServiceSettings.AllowCookiesForSubdomains {
-		return NewAppError("Config.IsValid", "Allowing cookies for subdomains requires SiteURL to be set.", nil, "", http.StatusBadRequest)
 	}
 
 	if err := o.TeamSettings.isValid(); err != nil {
@@ -2074,6 +2103,10 @@ func (ls *LdapSettings) isValid() *AppError {
 		if *ls.IdAttribute == "" {
 			return NewAppError("Config.IsValid", "model.config.is_valid.ldap_id", nil, "", http.StatusBadRequest)
 		}
+
+		if *ls.LoginIdAttribute == "" {
+			return NewAppError("Config.IsValid", "model.config.is_valid.ldap_login_id", nil, "", http.StatusBadRequest)
+		}
 	}
 
 	return nil
@@ -2169,12 +2202,6 @@ func (ss *ServiceSettings) isValid() *AppError {
 
 	if *ss.MaximumLoginAttempts <= 0 {
 		return NewAppError("Config.IsValid", "model.config.is_valid.login_attempts.app_error", nil, "", http.StatusBadRequest)
-	}
-
-	if len(*ss.SiteURL) != 0 {
-		if _, err := url.ParseRequestURI(*ss.SiteURL); err != nil {
-			return NewAppError("Config.IsValid", "model.config.is_valid.site_url.app_error", nil, "", http.StatusBadRequest)
-		}
 	}
 
 	if len(*ss.WebsocketURL) != 0 {

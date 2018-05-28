@@ -714,7 +714,7 @@ func testChannelMemberStore(t *testing.T, ss store.Store) {
 	c1 = *store.Must(ss.Channel().Save(&c1, -1)).(*model.Channel)
 
 	c1t1 := (<-ss.Channel().Get(c1.Id, false)).Data.(*model.Channel)
-	t1 := c1t1.ExtraUpdateAt
+	assert.EqualValues(t, 0, c1t1.ExtraUpdateAt, "ExtraUpdateAt should be 0")
 
 	u1 := model.User{}
 	u1.Email = model.NewId()
@@ -741,11 +741,7 @@ func testChannelMemberStore(t *testing.T, ss store.Store) {
 	store.Must(ss.Channel().SaveMember(&o2))
 
 	c1t2 := (<-ss.Channel().Get(c1.Id, false)).Data.(*model.Channel)
-	t2 := c1t2.ExtraUpdateAt
-
-	if t2 <= t1 {
-		t.Fatal("Member update time incorrect")
-	}
+	assert.EqualValues(t, 0, c1t2.ExtraUpdateAt, "ExtraUpdateAt should be 0")
 
 	count := (<-ss.Channel().GetMemberCount(o1.ChannelId, true)).Data.(int64)
 	if count != 2 {
@@ -778,11 +774,7 @@ func testChannelMemberStore(t *testing.T, ss store.Store) {
 	}
 
 	c1t3 := (<-ss.Channel().Get(c1.Id, false)).Data.(*model.Channel)
-	t3 := c1t3.ExtraUpdateAt
-
-	if t3 <= t2 || t3 <= t1 {
-		t.Fatal("Member update time incorrect on delete")
-	}
+	assert.EqualValues(t, 0, c1t3.ExtraUpdateAt, "ExtraUpdateAt should be 0")
 
 	member := (<-ss.Channel().GetMember(o1.ChannelId, o1.UserId)).Data.(*model.ChannelMember)
 	if member.ChannelId != o1.ChannelId {
@@ -794,10 +786,7 @@ func testChannelMemberStore(t *testing.T, ss store.Store) {
 	}
 
 	c1t4 := (<-ss.Channel().Get(c1.Id, false)).Data.(*model.Channel)
-	t4 := c1t4.ExtraUpdateAt
-	if t4 != t3 {
-		t.Fatal("Should not update time upon failure")
-	}
+	assert.EqualValues(t, 0, c1t4.ExtraUpdateAt, "ExtraUpdateAt should be 0")
 }
 
 func testChannelDeleteMemberStore(t *testing.T, ss store.Store) {
@@ -809,7 +798,7 @@ func testChannelDeleteMemberStore(t *testing.T, ss store.Store) {
 	c1 = *store.Must(ss.Channel().Save(&c1, -1)).(*model.Channel)
 
 	c1t1 := (<-ss.Channel().Get(c1.Id, false)).Data.(*model.Channel)
-	t1 := c1t1.ExtraUpdateAt
+	assert.EqualValues(t, 0, c1t1.ExtraUpdateAt, "ExtraUpdateAt should be 0")
 
 	u1 := model.User{}
 	u1.Email = model.NewId()
@@ -836,11 +825,7 @@ func testChannelDeleteMemberStore(t *testing.T, ss store.Store) {
 	store.Must(ss.Channel().SaveMember(&o2))
 
 	c1t2 := (<-ss.Channel().Get(c1.Id, false)).Data.(*model.Channel)
-	t2 := c1t2.ExtraUpdateAt
-
-	if t2 <= t1 {
-		t.Fatal("Member update time incorrect")
-	}
+	assert.EqualValues(t, 0, c1t2.ExtraUpdateAt, "ExtraUpdateAt should be 0")
 
 	count := (<-ss.Channel().GetMemberCount(o1.ChannelId, false)).Data.(int64)
 	if count != 2 {

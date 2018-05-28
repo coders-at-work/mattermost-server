@@ -6,7 +6,6 @@ package app
 import (
 	"encoding/json"
 	"runtime"
-	"sync/atomic"
 
 	"github.com/mattermost/mattermost-server/mlog"
 	"github.com/mattermost/mattermost-server/model"
@@ -138,7 +137,7 @@ func (a *App) trackActivity() {
 		activeUserCount = ucr.Data.(int64)
 	}
 
-	if iucr := <-a.Srv.Store.Status().GetTotalActiveUsersCount(); iucr.Err == nil {
+	if iucr := <-a.Srv.Store.User().AnalyticsGetInactiveUsersCount(); iucr.Err == nil {
 		inactiveUserCount = iucr.Data.(int64)
 	}
 
@@ -171,20 +170,17 @@ func (a *App) trackActivity() {
 	}
 
 	a.SendDiagnostic(TRACK_ACTIVITY, map[string]interface{}{
-		"registered_users":          userCount,
-		"active_users":              activeUserCount,
-		"registered_inactive_users": inactiveUserCount,
-		"teams":                     teamCount,
-		"public_channels":           publicChannelCount,
-		"private_channels":          privateChannelCount,
-		"direct_message_channels":   directChannelCount,
-		"public_channels_deleted":   deletedPublicChannelCount,
-		"private_channels_deleted":  deletedPrivateChannelCount,
-		"posts":                     postsCount,
-		"used_apiv3":                atomic.LoadInt32(model.UsedApiV3) == 1,
+		"registered_users":             userCount,
+		"active_users":                 activeUserCount,
+		"registered_deactivated_users": inactiveUserCount,
+		"teams":                    teamCount,
+		"public_channels":          publicChannelCount,
+		"private_channels":         privateChannelCount,
+		"direct_message_channels":  directChannelCount,
+		"public_channels_deleted":  deletedPublicChannelCount,
+		"private_channels_deleted": deletedPrivateChannelCount,
+		"posts":                    postsCount,
 	})
-
-	atomic.StoreInt32(model.UsedApiV3, 0)
 }
 
 func (a *App) trackConfig() {
@@ -199,7 +195,6 @@ func (a *App) trackConfig() {
 		"enable_only_admin_integrations":                          *cfg.ServiceSettings.EnableOnlyAdminIntegrations,
 		"enable_post_username_override":                           cfg.ServiceSettings.EnablePostUsernameOverride,
 		"enable_post_icon_override":                               cfg.ServiceSettings.EnablePostIconOverride,
-		"enable_apiv3":                                            *cfg.ServiceSettings.EnableAPIv3,
 		"enable_user_access_tokens":                               *cfg.ServiceSettings.EnableUserAccessTokens,
 		"enable_custom_emoji":                                     *cfg.ServiceSettings.EnableCustomEmoji,
 		"enable_emoji_picker":                                     *cfg.ServiceSettings.EnableEmojiPicker,
@@ -249,32 +244,33 @@ func (a *App) trackConfig() {
 	})
 
 	a.SendDiagnostic(TRACK_CONFIG_TEAM, map[string]interface{}{
-		"enable_user_creation":                    cfg.TeamSettings.EnableUserCreation,
-		"enable_team_creation":                    *cfg.TeamSettings.EnableTeamCreation,
-		"restrict_team_invite":                    *cfg.TeamSettings.RestrictTeamInvite,
-		"restrict_public_channel_creation":        *cfg.TeamSettings.RestrictPublicChannelCreation,
-		"restrict_private_channel_creation":       *cfg.TeamSettings.RestrictPrivateChannelCreation,
-		"restrict_public_channel_management":      *cfg.TeamSettings.RestrictPublicChannelManagement,
-		"restrict_private_channel_management":     *cfg.TeamSettings.RestrictPrivateChannelManagement,
-		"restrict_public_channel_deletion":        *cfg.TeamSettings.RestrictPublicChannelDeletion,
-		"restrict_private_channel_deletion":       *cfg.TeamSettings.RestrictPrivateChannelDeletion,
-		"enable_open_server":                      *cfg.TeamSettings.EnableOpenServer,
-		"enable_custom_brand":                     *cfg.TeamSettings.EnableCustomBrand,
-		"restrict_direct_message":                 *cfg.TeamSettings.RestrictDirectMessage,
-		"max_notifications_per_channel":           *cfg.TeamSettings.MaxNotificationsPerChannel,
-		"enable_confirm_notifications_to_channel": *cfg.TeamSettings.EnableConfirmNotificationsToChannel,
-		"max_users_per_team":                      *cfg.TeamSettings.MaxUsersPerTeam,
-		"max_channels_per_team":                   *cfg.TeamSettings.MaxChannelsPerTeam,
-		"teammate_name_display":                   *cfg.TeamSettings.TeammateNameDisplay,
-		"isdefault_site_name":                     isDefault(cfg.TeamSettings.SiteName, "Mattermost"),
-		"isdefault_custom_brand_text":             isDefault(*cfg.TeamSettings.CustomBrandText, model.TEAM_SETTINGS_DEFAULT_CUSTOM_BRAND_TEXT),
-		"isdefault_custom_description_text":       isDefault(*cfg.TeamSettings.CustomDescriptionText, model.TEAM_SETTINGS_DEFAULT_CUSTOM_DESCRIPTION_TEXT),
-		"isdefault_user_status_away_timeout":      isDefault(*cfg.TeamSettings.UserStatusAwayTimeout, model.TEAM_SETTINGS_DEFAULT_USER_STATUS_AWAY_TIMEOUT),
-		"restrict_private_channel_manage_members": *cfg.TeamSettings.RestrictPrivateChannelManageMembers,
-		"enable_X_to_leave_channels_from_LHS":     *cfg.TeamSettings.EnableXToLeaveChannelsFromLHS,
-		"experimental_enable_automatic_replies":   *cfg.TeamSettings.ExperimentalEnableAutomaticReplies,
-		"experimental_town_square_is_read_only":   *cfg.TeamSettings.ExperimentalTownSquareIsReadOnly,
-		"experimental_primary_team":               isDefault(*cfg.TeamSettings.ExperimentalPrimaryTeam, ""),
+		"enable_user_creation":                      cfg.TeamSettings.EnableUserCreation,
+		"enable_team_creation":                      *cfg.TeamSettings.EnableTeamCreation,
+		"restrict_team_invite":                      *cfg.TeamSettings.RestrictTeamInvite,
+		"restrict_public_channel_creation":          *cfg.TeamSettings.RestrictPublicChannelCreation,
+		"restrict_private_channel_creation":         *cfg.TeamSettings.RestrictPrivateChannelCreation,
+		"restrict_public_channel_management":        *cfg.TeamSettings.RestrictPublicChannelManagement,
+		"restrict_private_channel_management":       *cfg.TeamSettings.RestrictPrivateChannelManagement,
+		"restrict_public_channel_deletion":          *cfg.TeamSettings.RestrictPublicChannelDeletion,
+		"restrict_private_channel_deletion":         *cfg.TeamSettings.RestrictPrivateChannelDeletion,
+		"enable_open_server":                        *cfg.TeamSettings.EnableOpenServer,
+		"enable_custom_brand":                       *cfg.TeamSettings.EnableCustomBrand,
+		"restrict_direct_message":                   *cfg.TeamSettings.RestrictDirectMessage,
+		"max_notifications_per_channel":             *cfg.TeamSettings.MaxNotificationsPerChannel,
+		"enable_confirm_notifications_to_channel":   *cfg.TeamSettings.EnableConfirmNotificationsToChannel,
+		"max_users_per_team":                        *cfg.TeamSettings.MaxUsersPerTeam,
+		"max_channels_per_team":                     *cfg.TeamSettings.MaxChannelsPerTeam,
+		"teammate_name_display":                     *cfg.TeamSettings.TeammateNameDisplay,
+		"isdefault_site_name":                       isDefault(cfg.TeamSettings.SiteName, "Mattermost"),
+		"isdefault_custom_brand_text":               isDefault(*cfg.TeamSettings.CustomBrandText, model.TEAM_SETTINGS_DEFAULT_CUSTOM_BRAND_TEXT),
+		"isdefault_custom_description_text":         isDefault(*cfg.TeamSettings.CustomDescriptionText, model.TEAM_SETTINGS_DEFAULT_CUSTOM_DESCRIPTION_TEXT),
+		"isdefault_user_status_away_timeout":        isDefault(*cfg.TeamSettings.UserStatusAwayTimeout, model.TEAM_SETTINGS_DEFAULT_USER_STATUS_AWAY_TIMEOUT),
+		"restrict_private_channel_manage_members":   *cfg.TeamSettings.RestrictPrivateChannelManageMembers,
+		"enable_X_to_leave_channels_from_LHS":       *cfg.TeamSettings.EnableXToLeaveChannelsFromLHS,
+		"experimental_enable_automatic_replies":     *cfg.TeamSettings.ExperimentalEnableAutomaticReplies,
+		"experimental_town_square_is_hidden_in_lhs": *cfg.TeamSettings.ExperimentalHideTownSquareinLHS,
+		"experimental_town_square_is_read_only":     *cfg.TeamSettings.ExperimentalTownSquareIsReadOnly,
+		"experimental_primary_team":                 isDefault(*cfg.TeamSettings.ExperimentalPrimaryTeam, ""),
 	})
 
 	a.SendDiagnostic(TRACK_CONFIG_CLIENT_REQ, map[string]interface{}{
@@ -343,6 +339,7 @@ func (a *App) trackConfig() {
 		"enable_email_batching":                *cfg.EmailSettings.EnableEmailBatching,
 		"email_batching_buffer_size":           *cfg.EmailSettings.EmailBatchingBufferSize,
 		"email_batching_interval":              *cfg.EmailSettings.EmailBatchingInterval,
+		"enable_preview_mode_banner":           *cfg.EmailSettings.EnablePreviewModeBanner,
 		"isdefault_feedback_name":              isDefault(cfg.EmailSettings.FeedbackName, ""),
 		"isdefault_feedback_email":             isDefault(cfg.EmailSettings.FeedbackEmail, ""),
 		"isdefault_feedback_organization":      isDefault(*cfg.EmailSettings.FeedbackOrganization, model.EMAIL_SETTINGS_DEFAULT_FEEDBACK_ORGANIZATION),
